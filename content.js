@@ -1,4 +1,4 @@
-// content.js — v6.9 — auto fill verify step
+// content.js — v6.11 — auto fill verify step by placeholder pattern
 
 const SIM_KEY         = "okvip_sims";
 const CURRENT_SIM_KEY = "okvip_current_sim";
@@ -233,6 +233,21 @@ async function pollOtp(sim, apiKey, btn){
 
 
 // =====================================================
+// FILL PHONE HELPER
+// =====================================================
+
+function doFillPhone(phone){
+  const phoneEl = findPhoneInput();
+  setTimeout(() => {
+    fillInput(phoneEl, stripZero(phone));
+    setTimeout(() => {
+      if(!phoneEl?.value) fillInput(phoneEl, phone);
+    }, 500);
+  }, 300);
+}
+
+
+// =====================================================
 // HANDLERS
 // =====================================================
 
@@ -249,23 +264,20 @@ async function handleFillPhoneClick(){
   let currentSim = null;
   try{ currentSim = JSON.parse(currentRaw || "null"); }catch(e){}
 
+  // Đã có SIM chưa done → chỉ điền lại, KHÔNG thuê mới
   if(currentSim && !currentSim.done){
-    await cancelSim(currentSim, apiKey);
+    showToast(`♻️ Dùng lại ${currentSim.phone}`, "info");
+    doFillPhone(currentSim.phone);
+    return;
   }
 
+  // Thuê mới khi chưa có SIM hoặc SIM cũ đã done
   const res = await rentNewSim(apiKey, type);
   if(!res) return;
 
   setStorage({[CURRENT_SIM_KEY]: JSON.stringify(res.simObj)});
   showToast(`✅ ${res.phone}`, "success");
-
-  const phoneEl = findPhoneInput();
-  setTimeout(() => {
-    fillInput(phoneEl, stripZero(res.phone));
-    setTimeout(() => {
-      if(!phoneEl?.value) fillInput(phoneEl, res.phone);
-    }, 500);
-  }, 300);
+  doFillPhone(res.phone);
 }
 
 
@@ -363,8 +375,11 @@ function tryInject(){
   if(phone){
     injectBtn(phone, "okvip-btn-phone", "📲 Điền SĐT", "#ff6b00", handleFillPhoneClick);
 
-    // Tự điền lại khi input trống (bước xác minh SĐT)
-    if(!phone.value){
+    // Phát hiện bước xác minh: placeholder có dạng "99*185"
+    const placeholder = phone.placeholder || "";
+    const isVerifyStep = /\d+\*\d+/.test(placeholder);
+
+    if(!phone.value && isVerifyStep){
       try{
         const sim = JSON.parse(localStorage.getItem(CURRENT_SIM_KEY) || "null");
         if(sim?.phone){
