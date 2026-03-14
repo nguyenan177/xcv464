@@ -1,4 +1,4 @@
-// content.js — v6.13 — always re-rent on first step + reset on load
+// content.js — v6.14 — keep SIM on reload, reset only on new rent
 
 const SIM_KEY         = "okvip_sims";
 const CURRENT_SIM_KEY = "okvip_current_sim";
@@ -20,9 +20,6 @@ const APP_ID    = 1200;
 if(!localStorage.getItem(API_KEY_STORE)){
   localStorage.setItem(API_KEY_STORE, DEFAULT_API_KEY);
 }
-
-// Reset SIM cũ khi chạy lại bookmarklet (phiên mới)
-localStorage.removeItem(CURRENT_SIM_KEY);
 
 
 // =====================================================
@@ -289,6 +286,7 @@ async function handleFillPhoneClick(){
   const res = await rentNewSim(apiKey, type);
   if(!res) return;
 
+  // Chỉ ghi đè CURRENT_SIM_KEY sau khi thuê thành công
   setStorage({[CURRENT_SIM_KEY]: JSON.stringify(res.simObj)});
   showToast(`✅ ${res.phone}`, "success");
   doFillPhone(res.phone);
