@@ -1,6 +1,5 @@
-// content.js — v6.16 — nút giải captcha nổi cố định
+// content.js — v6.17 — nút giải captcha cạnh "Chọn theo thứ tự này"
 
-const SIM_KEY           = "okvip_sims";
 const CURRENT_SIM_KEY   = "okvip_current_sim";
 const API_KEY_STORE     = "okvip_api_key";
 const CAPTCHA_KEY_STORE = "okvip_captcha_api_key";
@@ -52,6 +51,67 @@ function findOtpInput(){
     KW.test(el.id||"") || KW.test(el.getAttribute("data-input-name")||"") ||
     KW.test(el.getAttribute("aria-label")||"")
   ) || null;
+}
+
+
+// =====================================================
+// TÌM CAPTCHA CONTAINER (botion)
+// =====================================================
+
+function findBotionContainer(){
+  // Tìm theo class botion_text_tips hoặc text "Chọn theo thứ tự"
+  const tipEl =
+    document.querySelector('[class*="botion_text_tips"]') ||
+    document.querySelector('[class*="botion"]') ||
+    [...document.querySelectorAll('*')].find(el =>
+      el.childNodes && [...el.childNodes].some(n =>
+        n.textContent?.trim().includes('Chọn theo thứ tự')
+      )
+    );
+
+  if(!tipEl) return null;
+
+  // Leo lên tìm container bọc ngoài có kích thước đủ lớn
+  let el = tipEl;
+  for(let i = 0; i < 8; i++){
+    if(!el.parentElement) break;
+    el = el.parentElement;
+    if(el.offsetWidth > 200 && el.offsetHeight > 200) return el;
+  }
+  return tipEl.parentElement || tipEl;
+}
+
+function findBotionImage(){
+  // Tìm canvas hoặc img bên trong botion container
+  const container = findBotionContainer();
+  if(!container) return null;
+
+  // Ưu tiên canvas (WebGL)
+  const canvas = container.querySelector('canvas');
+  if(canvas && canvas.width > 50) return canvas;
+
+  // Fallback img
+  const imgs = [...container.querySelectorAll('img')]
+    .sort((a,b) => (b.offsetWidth*b.offsetHeight)-(a.offsetWidth*a.offsetHeight));
+  if(imgs.length) return imgs[0];
+
+  return null;
+}
+
+// Tìm vùng ảnh có thể click được (nơi user phải click icon)
+function findBotionClickArea(){
+  const container = findBotionContainer();
+  if(!container) return null;
+
+  // Tìm div/section có class liên quan đến ảnh trong botion
+  const imgArea =
+    container.querySelector('[class*="botion_img"]') ||
+    container.querySelector('[class*="botion_body"]') ||
+    container.querySelector('[class*="botion_click"]') ||
+    container.querySelector('canvas') ||
+    container.querySelector('img');
+
+  return imgArea || container;
 }
 
 
@@ -125,39 +185,61 @@ async function fetchImageBase64(src){
   }catch(e){ return null; }
 }
 
+async function captureElement(el){
+  try{
+    const h2c = await loadHtml2Canvas();
+    const canvas = await h2c(el, {
+      useCORS: true, allowTaint: true, scale: 1,
+      foreignObjectRendering: false,
+    });
+    return canvas.toDataURL('image/png').split(',')[1];
+  }catch(e){ return null; }
+}
+
 async function getBase64ForCaptcha(){
-  // 1. Thử canvas đang hiển thị
-  const canvases = [...document.querySelectorAll('canvas')]
-    .filter(c => c.width > 100 && c.height > 100 && c.offsetParent)
-    .sort((a,b) => (b.width*b.height)-(a.width*a.height));
-  if(canvases.length){
-    try{ return canvases[0].toDataURL('image/png').split(',')[1]; }catch(e){}
+  // 1. Canvas trong botion (WebGL render ở đây)
+  const botionImg = findBotionImage();
+  if(botionImg){
+    if(botionImg.tagName === 'CANVAS'){
+      try{
+        const b64 = botionImg.toDataURL('image/png').split(',')[1];
+        if(b64 && b64.length > 100) return b64;
+      }catch(e){}
+    }
+    if(botionImg.tagName === 'IMG' && botionImg.src){
+      const b64 = await fetchImageBase64(botionImg.src);
+      if(b64) return b64;
+    }
   }
 
-  // 2. Thử img lớn nhất đang hiển thị
-  const imgs = [...document.querySelectorAll('img')]
-    .filter(i => i.offsetWidth > 100 && i.offsetHeight > 100 && i.offsetParent)
-    .sort((a,b) => (b.offsetWidth*b.offsetHeight)-(a.offsetWidth*a.offsetHeight));
-  if(imgs.length){
-    const b64 = await fetchImageBase64(imgs[0].src);
+  // 2. Bất kỳ canvas nào đang visible
+  const canvases = [...document.querySelectorAll('canvas')]
+    .filter(c => c.width > 100 && c.offsetParent)
+    .sort((a,b) => (b.width*b.height)-(a.width*a.height));
+  if(canvases.length){
+    try{
+      const b64 = canvases[0].toDataURL('image/png').split(',')[1];
+      if(b64 && b64.length > 100) return b64;
+    }catch(e){}
+  }
+
+  // 3. Chụp container botion bằng html2canvas
+  const container = findBotionContainer();
+  if(container){
+    const b64 = await captureElement(container);
     if(b64) return b64;
   }
 
-  // 3. Fallback: chụp viewport bằng html2canvas
+  // 4. Fallback: chụp toàn viewport
   try{
     const h2c = await loadHtml2Canvas();
-
-    // Ẩn nút extension trước khi chụp
     const myBtns = [...document.querySelectorAll('[id^="okvip-"]')];
     myBtns.forEach(b => b.style.visibility = 'hidden');
-
     const canvas = await h2c(document.body, {
       useCORS: true, allowTaint: true, scale: 1,
       x: window.scrollX, y: window.scrollY,
       width: window.innerWidth, height: window.innerHeight,
-      windowWidth: window.innerWidth, windowHeight: window.innerHeight,
     });
-
     myBtns.forEach(b => b.style.visibility = '');
     return canvas.toDataURL('image/png').split(',')[1];
   }catch(e){
@@ -197,18 +279,38 @@ async function executeSolution(captchaText){
   while((m = re.exec(text)) !== null) coords.push({x:+m[1], y:+m[2]});
 
   if(coords.length > 0){
-    showToast(`🎯 Đang click ${coords.length} điểm...`, 'info');
+    showToast(`🎯 Click ${coords.length} điểm...`, 'info');
+
+    // Lấy offset của click area để tính tọa độ tuyệt đối
+    const clickArea = findBotionClickArea();
+    const rect = clickArea ? clickArea.getBoundingClientRect() : {left:0, top:0};
+
     for(const {x, y} of coords){
-      const el = document.elementFromPoint(x, y) || document.body;
+      // Tọa độ có thể là relative với ảnh hoặc absolute với viewport
+      // Thử cả 2: nếu x < width của ảnh thì là relative
+      const areaW = clickArea?.offsetWidth || window.innerWidth;
+      const areaH = clickArea?.offsetHeight || window.innerHeight;
+
+      let absX, absY;
+      if(x < areaW && y < areaH){
+        // Relative → convert sang viewport
+        absX = rect.left + x;
+        absY = rect.top  + y;
+      }else{
+        // Đã là viewport coordinates
+        absX = x; absY = y;
+      }
+
+      const el = document.elementFromPoint(absX, absY) || document.body;
       ['mousedown','mouseup','click'].forEach(ev =>
-        el.dispatchEvent(new MouseEvent(ev, {bubbles:true, clientX:x, clientY:y}))
+        el.dispatchEvent(new MouseEvent(ev, {bubbles:true, clientX:absX, clientY:absY}))
       );
-      await new Promise(r => setTimeout(r, 600));
+      await new Promise(r => setTimeout(r, 700));
     }
     return true;
   }
 
-  // Dạng text thuần → điền vào ô input
+  // Dạng text → điền ô input
   const inp = findOtpInput();
   if(inp){ fillInput(inp, text); return true; }
 
@@ -236,12 +338,12 @@ async function handleSolveCaptcha(){
 
     showToast('🤖 Đang gửi giải...', 'info');
 
-    // Thử type 51 (Recognition), nếu thất bại thử type 14 (Autodetect)
+    // Thử type 51 (Recognition click), rồi 14 (Autodetect)
     let result = await solveCaptcha(base64, 51);
     if(!result?.success) result = await solveCaptcha(base64, 14);
 
     if(!result?.success){
-      showToast(`❌ Thất bại: ${result?.message || 'Lỗi API'}`, 'error');
+      showToast(`❌ ${result?.message || 'Lỗi API'}`, 'error');
       resetCaptchaBtn(); return;
     }
 
@@ -258,7 +360,7 @@ async function handleSolveCaptcha(){
 function resetCaptchaBtn(){
   const btn = document.getElementById('okvip-btn-captcha');
   if(!btn) return;
-  btn.textContent = '🔓 Giải Captcha';
+  btn.textContent = '🔓 Giải';
   btn.style.background = '#8b5cf6';
   btn.disabled = false;
 }
@@ -401,33 +503,56 @@ function injectBtn(inputEl, id, label, color, handler){
 
 
 // =====================================================
-// NÚT GIẢI CAPTCHA NỔI CỐ ĐỊNH (luôn hiển thị ở góc)
+// INJECT NÚT GIẢI CAPTCHA CẠNh "Chọn theo thứ tự này:"
 // =====================================================
 
-function injectFloatingCaptchaBtn(){
+function injectCaptchaBtn(){
   if(document.getElementById('okvip-btn-captcha')) return;
+
+  // Tìm đúng element "Chọn theo thứ tự này:"
+  const tipEl =
+    document.querySelector('[class*="botion_text_tips"]') ||
+    [...document.querySelectorAll('*')].find(el =>
+      el.children.length === 0 &&
+      el.textContent?.trim().includes('Chọn theo thứ tự')
+    );
+
+  if(!tipEl) return; // Captcha chưa hiện, chờ MutationObserver gọi lại
+
+  // Đặt nút ngay cạnh tipEl trong cùng parent
+  const parent = tipEl.parentElement;
+  if(!parent) return;
+
+  // Đảm bảo parent có display flex hoặc relative để nút đứng cạnh
+  const cs = getComputedStyle(parent);
+  if(cs.position === 'static') parent.style.position = 'relative';
+
   const btn = document.createElement('button');
   btn.id = 'okvip-btn-captcha';
   btn.type = 'button';
-  btn.textContent = '🔓 Giải Captcha';
+  btn.textContent = '🔓 Giải';
   btn.style.cssText = `
-    position:fixed;
-    bottom:70px;
-    right:16px;
-    z-index:2147483647;
-    padding:10px 16px;
+    display:inline-flex;
+    align-items:center;
+    margin-left:8px;
+    padding:4px 12px;
     background:#8b5cf6;
     color:#fff;
     border:none;
-    border-radius:10px;
-    font-size:13px;
+    border-radius:8px;
+    font-size:12px;
     font-weight:bold;
     cursor:pointer;
-    box-shadow:0 4px 14px rgba(0,0,0,0.35);
+    vertical-align:middle;
+    box-shadow:0 2px 8px rgba(0,0,0,0.25);
+    z-index:99999;
     -webkit-tap-highlight-color:transparent;
+    white-space:nowrap;
   `;
   btn.onclick = handleSolveCaptcha;
-  document.body.appendChild(btn);
+
+  // Chèn ngay sau tipEl
+  tipEl.insertAdjacentElement('afterend', btn);
 }
 
 
@@ -441,12 +566,13 @@ function showToast(msg, type){
   const t = document.createElement('div');
   t.id = 'okvip-toast'; t.textContent = msg;
   t.style.cssText = `
-    position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
-    z-index:2147483646;padding:10px 20px;border-radius:8px;
+    position:fixed;bottom:80px;left:50%;transform:translateX(-50%);
+    z-index:2147483647;padding:10px 20px;border-radius:8px;
     font-size:13px;font-weight:bold;color:#fff;
     background:${colors[type]||'#333'};
     box-shadow:0 4px 12px rgba(0,0,0,0.3);
     white-space:nowrap;
+    pointer-events:none;
   `;
   document.body.appendChild(t);
   setTimeout(() => t.remove(), 2500);
@@ -480,8 +606,8 @@ function tryInject(){
   const otp = findOtpInput();
   if(otp) injectBtn(otp, 'okvip-btn-otp', '📨 Lấy OTP', '#28a745', handleOtpClick);
 
-  // Nút giải captcha luôn nổi ở góc phải màn hình
-  injectFloatingCaptchaBtn();
+  // Inject nút giải captcha cạnh "Chọn theo thứ tự này:"
+  injectCaptchaBtn();
 }
 
 tryInject();
