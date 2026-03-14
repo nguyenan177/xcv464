@@ -1,4 +1,4 @@
-// content.js — v6.8 — fixed fillInput for React/Vue + rtl input
+// content.js — v6.9 — auto fill verify step
 
 const SIM_KEY         = "okvip_sims";
 const CURRENT_SIM_KEY = "okvip_current_sim";
@@ -80,9 +80,9 @@ function fillInput(el, val){
   ['focus','input','change','blur'].forEach(ev =>
     el.dispatchEvent(new Event(ev, { bubbles: true, cancelable: true }))
   );
-  el.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true }));
+  el.dispatchEvent(new KeyboardEvent('keydown',  { bubbles: true, cancelable: true }));
   el.dispatchEvent(new KeyboardEvent('keypress', { bubbles: true, cancelable: true }));
-  el.dispatchEvent(new KeyboardEvent('keyup',   { bubbles: true, cancelable: true }));
+  el.dispatchEvent(new KeyboardEvent('keyup',    { bubbles: true, cancelable: true }));
 
   return true;
 }
@@ -259,12 +259,9 @@ async function handleFillPhoneClick(){
   setStorage({[CURRENT_SIM_KEY]: JSON.stringify(res.simObj)});
   showToast(`✅ ${res.phone}`, "success");
 
-  // Thử cả 2: có đầu 0 và không đầu 0
   const phoneEl = findPhoneInput();
   setTimeout(() => {
-    // Thử điền không có đầu 0 trước
     fillInput(phoneEl, stripZero(res.phone));
-    // Nếu sau 500ms input vẫn rỗng, thử điền có đầu 0
     setTimeout(() => {
       if(!phoneEl?.value) fillInput(phoneEl, res.phone);
     }, 500);
@@ -304,8 +301,8 @@ function injectBtn(inputEl, id, label, color, handler){
     parent.style.position = "relative";
 
   const btn = document.createElement("button");
-  btn.id       = id;
-  btn.type     = "button";
+  btn.id          = id;
+  btn.type        = "button";
   btn.textContent = label;
   btn.style.cssText = `
     position:absolute;
@@ -363,7 +360,26 @@ function showToast(msg, type){
 
 function tryInject(){
   const phone = findPhoneInput();
-  if(phone) injectBtn(phone, "okvip-btn-phone", "📲 Điền SĐT", "#ff6b00", handleFillPhoneClick);
+  if(phone){
+    injectBtn(phone, "okvip-btn-phone", "📲 Điền SĐT", "#ff6b00", handleFillPhoneClick);
+
+    // Tự điền lại khi input trống (bước xác minh SĐT)
+    if(!phone.value){
+      try{
+        const sim = JSON.parse(localStorage.getItem(CURRENT_SIM_KEY) || "null");
+        if(sim?.phone){
+          setTimeout(() => {
+            if(!phone.value){
+              fillInput(phone, stripZero(sim.phone));
+              setTimeout(() => {
+                if(!phone.value) fillInput(phone, sim.phone);
+              }, 500);
+            }
+          }, 400);
+        }
+      }catch(e){}
+    }
+  }
 
   const otp = findOtpInput();
   if(otp) injectBtn(otp, "okvip-btn-otp", "📨 Lấy OTP", "#28a745", handleOtpClick);
