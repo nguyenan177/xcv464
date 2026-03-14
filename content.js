@@ -1,4 +1,4 @@
-// content.js — v6.12 — re-rent on double click + verify step detect
+// content.js — v6.13 — always re-rent on first step + reset on load
 
 const SIM_KEY         = "okvip_sims";
 const CURRENT_SIM_KEY = "okvip_current_sim";
@@ -20,6 +20,9 @@ const APP_ID    = 1200;
 if(!localStorage.getItem(API_KEY_STORE)){
   localStorage.setItem(API_KEY_STORE, DEFAULT_API_KEY);
 }
+
+// Reset SIM cũ khi chạy lại bookmarklet (phiên mới)
+localStorage.removeItem(CURRENT_SIM_KEY);
 
 
 // =====================================================
@@ -268,7 +271,7 @@ async function handleFillPhoneClick(){
   const placeholder  = phoneEl?.placeholder || "";
   const isVerifyStep = /\d+\*\d+/.test(placeholder);
 
-  // Bước xác minh (placeholder "99*185") → dùng lại số cũ, không thuê mới
+  // Bước xác minh (placeholder "99*185") → dùng lại số cũ
   if(isVerifyStep){
     if(currentSim?.phone){
       showToast(`♻️ Dùng lại ${currentSim.phone}`, "info");
@@ -279,15 +282,9 @@ async function handleFillPhoneClick(){
     return;
   }
 
-  // Bước nhập SĐT (placeholder "Nhập SĐT"):
-  // Nếu đang có số → xóa + cancel SIM cũ → thuê mới
-  if(phoneEl?.value){
-    fillInput(phoneEl, "");
-  }
-
-  if(currentSim && !currentSim.done){
-    await cancelSim(currentSim, apiKey);
-  }
+  // Bước nhập SĐT → LUÔN thuê mới
+  if(phoneEl?.value) fillInput(phoneEl, "");
+  if(currentSim) await cancelSim(currentSim, apiKey);
 
   const res = await rentNewSim(apiKey, type);
   if(!res) return;
@@ -392,7 +389,7 @@ function tryInject(){
   if(phone){
     injectBtn(phone, "okvip-btn-phone", "📲 Điền SĐT", "#ff6b00", handleFillPhoneClick);
 
-    // Tự điền lại khi phát hiện bước xác minh (placeholder có dạng "99*185")
+    // Tự điền lại khi phát hiện bước xác minh (placeholder "99*185")
     const placeholder  = phone.placeholder || "";
     const isVerifyStep = /\d+\*\d+/.test(placeholder);
 
