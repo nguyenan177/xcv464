@@ -1,41 +1,36 @@
-// OKVIP TOOL — iPhone/Safari Edition v6.17
-(function () {
-  // ====== CHROME API POLYFILL — luôn chạy đầu tiên ======
-  if(typeof chrome === 'undefined' || !chrome || !chrome.storage) {
-    window.chrome = window.chrome || {};
-    chrome.storage = {};
-    chrome.storage.local = {
-      get: function(keys, cb) {
-        const result = {};
-        const arr = Array.isArray(keys) ? keys : (typeof keys === 'string' ? [keys] : Object.keys(keys));
-        arr.forEach(k => {
-          const v = localStorage.getItem(k);
-          result[k] = v !== null ? v : undefined;
-        });
-        if(cb) cb(result);
-        return Promise.resolve(result);
-      },
-      set: function(obj, cb) {
-        Object.entries(obj).forEach(([k,v]) => {
-          localStorage.setItem(k, typeof v === 'object' ? JSON.stringify(v) : String(v));
-        });
-        if(cb) cb();
-        return Promise.resolve();
-      },
-      remove: function(keys, cb) {
-        (Array.isArray(keys) ? keys : [keys]).forEach(k => localStorage.removeItem(k));
-        if(cb) cb();
-        return Promise.resolve();
-      }
-    };
-    chrome.tabs = { query: async () => [], get: async () => null };
-    chrome.scripting = { executeScript: async () => [] };
-    chrome.runtime = { onMessage: { addListener: () => {} } };
-  }
-  // ====== END POLYFILL ======
+// ============================================================
+// OKVIP TOOL — ALL-IN-ONE v6.17
+// ============================================================
 
+(function () {
   if (window.__MK_LOADED__) return;
   window.__MK_LOADED__ = true;
+
+  // ===== CHROME API POLYFILL FOR iPHONE/BOOKMARKLET =====
+  if (typeof chrome === 'undefined' || !chrome.storage) {
+    window.chrome = window.chrome || {};
+    chrome.storage = {
+      local: {
+        get: (keys, cb) => {
+          try {
+            const result = {};
+            const ks = Array.isArray(keys) ? keys : [keys];
+            ks.forEach(k => { try { result[k] = JSON.parse(localStorage.getItem(k)); } catch(e) { result[k] = localStorage.getItem(k); } });
+            if(cb) cb(result); return Promise.resolve(result);
+          } catch(e) { if(cb) cb({}); return Promise.resolve({}); }
+        },
+        set: (obj, cb) => {
+          try {
+            Object.entries(obj).forEach(([k,v]) => localStorage.setItem(k, typeof v === 'object' ? JSON.stringify(v) : v));
+            if(cb) cb();
+          } catch(e) {}
+          return Promise.resolve();
+        }
+      }
+    };
+  }
+  // ===== END POLYFILL =====
+
 
   // =====================================================
   // ========== PHẦN 1: BANK TOOL (Firebase) ==========
@@ -334,7 +329,7 @@
     const byName = document.querySelector('input[name="payeeName"], input[name="realName"], input[name="fullName"], input[name="full_name"]');
     if(byName) return byName;
     // Tìm theo formcontrolname
-    const byFC = document.querySelector('input[formcontrolname="payeeName"], input[formcontrolname="realName"], input[formcontrolname="fullName"]');
+    const byFC = document.querySelector('input[formcontrolname="payeeName"], input[formcontrolname="realName"], input[formcontrolname="fullName"], input[formcontrolname="name"]');
     if(byFC) return byFC;
     // Tìm theo keyword nhưng loại trừ ô username/password/account
     const EXCLUDE = /tên người dùng|ten nguoi dung|tên tài khoản|ten tai khoan|username|account|password|mật khẩu/i;
@@ -367,14 +362,23 @@
     return findInputByKeywords(FIELD_KEYWORDS.stk);
   }
 
+  // ── Ô username chính: class="w-full" (không có mx-auto) ──
+  // ── Ô nhập lại username: class="w-full mx-auto" ──
+  function getConfirmUsernameInput() {
+    return [...document.querySelectorAll('input[type="text"]')].find(el =>
+      (/nhập tên tài khoản|nhap ten tai khoan/i.test(el.placeholder||"") &&
+      el.classList.contains("w-full") && el.classList.contains("mx-auto")) ||
+      /nhập tài khoản|nhap tai khoan/i.test(el.placeholder||"")
+    ) || null;
+  }
+
   function getUsernameInput() {
-    // Placeholder trực tiếp — ưu tiên input VISIBLE trước
-    const byPlaceholderAll = [...document.querySelectorAll('input[type="text"]')].filter(el =>
-      /nhập tên tài khoản|nhap ten tai khoan/i.test(el.placeholder||"")
+    // Ô username chính: có w-full nhưng KHÔNG có mx-auto
+    const byWFull = [...document.querySelectorAll('input[type="text"]')].find(el =>
+      /nhập tên tài khoản|nhap ten tai khoan/i.test(el.placeholder||"") &&
+      el.classList.contains("w-full") && !el.classList.contains("mx-auto")
     );
-    // Lấy cái visible trước, fallback về cái đầu tiên
-    const byPlaceholder = byPlaceholderAll.find(el => el.getBoundingClientRect().width > 0) || byPlaceholderAll[0];
-    if (byPlaceholder) return byPlaceholder;
+    if (byWFull) return byWFull;
     // data-input-name ưu tiên cao nhất
     const byData = document.querySelector('input[data-input-name="account"], input[data-input-name="username"]');
     if (byData) return byData;
@@ -553,7 +557,7 @@
     try { sessionStorage.setItem(LAST_ACCOUNT_KEY, JSON.stringify(account)); } catch(e) {}
     // Lưu STK và tên vào chrome.storage ngay khi chọn tài khoản
     try {
-      chrome.storage.local.set({
+      (()=>{ try{ const _o={
         [LAST_STK_KEY]:  account.account,
         [LAST_NAME_KEY]: account.name,
       });
@@ -604,6 +608,9 @@
     // 3. Tìm theo type=tel
     const tel = document.querySelector('input[type="tel"]');
     if (tel) return tel;
+    // 3b. Tìm theo formcontrolname="mobile"
+    const byMobile = document.querySelector('input[formcontrolname="mobile"]');
+    if (byMobile) return byMobile;
     // 4. Tìm theo keyword — loại trừ input STK
     const KW = /phone|mobile|sdt|điện thoại|dien thoai|số đt|nhập sđt|nhap sdt|nhập số điện|nhap so dien|số điện|so dien/i;
     const all = [...document.querySelectorAll('input[type="text"],input[type="number"],input[type="tel"]')];
@@ -792,7 +799,7 @@
     if (!res) return;
     setStorage({[CURRENT_SIM_KEY]: JSON.stringify(res.simObj)});
     showToast(`✅ ${res.phone}`, "success");
-    try { chrome.storage.local.set({[LAST_PHONE_KEY]: res.phone}); } catch(e) {}
+    try { (()=>{ try{ const _o={[LAST_PHONE_KEY]: res.phone}); } catch(e) {}
     doFillPhone(res.phone);
   }
 
@@ -1235,138 +1242,121 @@
   // =====================================================
 
   function injectCaptchaBtn(){
-    if(document.getElementById('okvip-btn-captcha')) return;
-
-    const btnStyle = `
-      display:inline-flex;align-items:center;
-      margin-left:8px;padding:4px 12px;
-      background:#8b5cf6;color:#fff;border:none;border-radius:8px;
-      font-size:12px;font-weight:bold;cursor:pointer;
-      vertical-align:middle;box-shadow:0 2px 8px rgba(0,0,0,0.25);
-      z-index:99999;-webkit-tap-highlight-color:transparent;white-space:nowrap;
-    `;
-
     // ── LOẠI 1: Botion "Chọn theo thứ tự" ──
-    const tipEl =
-      document.querySelector('[class*="botion_text_tips"]') ||
-      [...document.querySelectorAll('*')].find(el =>
-        el.children.length === 0 &&
-        el.textContent?.trim().includes('Chọn theo thứ tự')
-      );
-
-    if(tipEl) {
-      const parent = tipEl.parentElement;
-      if(!parent) return;
-      if(getComputedStyle(parent).position === 'static') parent.style.position = 'relative';
-      const btn = document.createElement('button');
-      btn.id = 'okvip-btn-captcha';
-      btn.type = 'button';
-      btn.textContent = '🔓 Giải';
-      btn.style.cssText = btnStyle;
-      btn.onclick = handleSolveCaptcha;
-      tipEl.insertAdjacentElement('afterend', btn);
-      return;
+    if (!document.getElementById('okvip-btn-captcha')) {
+      const tipEl =
+        document.querySelector('[class*="botion_text_tips"]') ||
+        [...document.querySelectorAll('*')].find(el =>
+          el.children.length === 0 &&
+          el.textContent?.trim().includes('Chọn theo thứ tự')
+        );
+      if(tipEl && tipEl.parentElement) {
+        const parent = tipEl.parentElement;
+        if(getComputedStyle(parent).position === 'static') parent.style.position = 'relative';
+        const btn = document.createElement('button');
+        btn.id = 'okvip-btn-captcha';
+        btn.type = 'button';
+        btn.textContent = '🔓 Giải';
+        btn.style.cssText = `display:inline-flex;align-items:center;margin-left:8px;padding:4px 12px;background:#8b5cf6;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:bold;cursor:pointer;vertical-align:middle;box-shadow:0 2px 8px rgba(0,0,0,0.25);z-index:99999;white-space:nowrap;`;
+        btn.onclick = handleSolveCaptcha;
+        tipEl.insertAdjacentElement('afterend', btn);
+        return;
+      }
     }
 
-    // ── LOẠI 2: Captcha ảnh số/chữ — input checkCode hoặc captcha-input ──
-    const checkInput =
-      document.getElementById('captcha-input') ||
-      document.querySelector('input[formcontrolname="checkCode"]') ||
-      document.querySelector('input[formcontrolname="captcha"]') ||
-      document.querySelector('input[formcontrolname="verifyCode"]') ||
-      [...document.querySelectorAll('input')].find(el =>
-        /xác minh|xac minh|captcha|verify/i.test(el.placeholder || '')
-      );
+    // ── LOẠI 2: Captcha input — inject nút cho TẤT CẢ input chưa có nút ──
+    const allCaptchaInputs = [...document.querySelectorAll('input')].filter(el =>
+      /nhập.*captcha|captcha|xác minh|xac minh|verify/i.test(el.placeholder || '') ||
+      ['captcha-input'].includes(el.id) ||
+      ['checkCode','captcha','verifyCode'].includes(el.getAttribute('formcontrolname'))
+    );
 
-    if(checkInput) {
+    for (const checkInput of allCaptchaInputs) {
+      if (checkInput.dataset.mkCaptchaInjected) continue;
+      if (checkInput.closest('[id^="__mk_captcha_wrap"]')) continue;
+      checkInput.dataset.mkCaptchaInjected = '1';
+
       const btn = document.createElement('button');
-      btn.id = 'okvip-btn-captcha';
       btn.type = 'button';
       btn.textContent = '🔓 Giải';
-      btn.style.cssText = `
-        display:block;width:100%;margin-top:6px;
-        padding:7px 0;background:#8b5cf6;color:#fff;
-        border:none;border-radius:8px;font-size:13px;font-weight:bold;
-        cursor:pointer;box-shadow:0 2px 8px rgba(139,92,246,0.4);
-        z-index:9999;touch-action:manipulation;
-      `;
-      btn.addEventListener('mousedown', e => e.preventDefault());
+
+      const isWfull = checkInput.classList.contains('w-full');
+      if (isWfull && !checkInput.closest('[id^="__mk_captcha_wrap"]')) {
+        const wrapId = '__mk_captcha_wrap__' + Date.now();
+        const wrap = document.createElement('div');
+        wrap.id = wrapId;
+        wrap.style.cssText = 'position:relative;display:block;width:100%;';
+        checkInput.parentNode.insertBefore(wrap, checkInput);
+        wrap.appendChild(checkInput);
+        checkInput.style.setProperty('padding-left', '90px', 'important');
+        checkInput.style.setProperty('padding-right', '8px', 'important');
+        const svgContainer = wrap.parentElement?.querySelector('div.absolute');
+        if (svgContainer) svgContainer.style.display = 'none';
+        Object.assign(btn.style, {
+          position:'absolute', top:'50%', transform:'translateY(-50%)', left:'6px',
+          background:'linear-gradient(135deg,#8b5cf6,#6d28d9)', color:'#fff',
+          border:'none', borderRadius:'20px', padding:'7px 14px',
+          fontWeight:'bold', fontSize:'13px', cursor:'pointer',
+          zIndex:'9999', whiteSpace:'nowrap', touchAction:'manipulation',
+          boxShadow:'0 2px 8px rgba(109,40,217,0.4)'
+        });
+        btn.addEventListener('mousedown', e => e.preventDefault());
+        wrap.appendChild(btn);
+      } else {
+        btn.style.cssText = `display:block;width:100%;margin-top:6px;padding:7px 0;background:#8b5cf6;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:bold;cursor:pointer;box-shadow:0 2px 8px rgba(139,92,246,0.4);z-index:9999;touch-action:manipulation;`;
+        btn.addEventListener('mousedown', e => e.preventDefault());
+        checkInput.insertAdjacentElement('afterend', btn);
+      }
+
       btn.onclick = async () => {
         btn.textContent = '⏳...'; btn.disabled = true; btn.style.background = '#6c757d';
-
-        // Tạm dừng MutationObserver để tránh inject lại nút khi captcha đổi
         window.__MK_CAPTCHA_SOLVING__ = true;
-
         try {
           showToast('📸 Đọc mã captcha...', 'info');
-
-          // Tìm ảnh captcha: ưu tiên parentElement.parentElement (đúng cấu trúc thực tế)
-          let captchaImg = null;
-          const p2 = checkInput.parentElement?.parentElement;
-          const p1 = checkInput.parentElement;
-          // Leo từ input ra ngoài tối đa 5 cấp, tìm img có src là SVG/captcha
-          let node = checkInput;
-          for(let i = 0; i < 5; i++) {
-            node = node.parentElement;
-            if(!node) break;
-            const imgs = [...node.querySelectorAll('img')].filter(img =>
-              img.src && (
-                img.src.startsWith('data:image/svg') ||
-                img.src.startsWith('data:image/png') ||
-                img.src.includes('captcha') || img.src.includes('verify') ||
-                img.src.includes('code') || img.src.includes('svg')
-              )
-            );
-            if(imgs.length) { captchaImg = imgs[0]; break; }
-          }
-          // Fallback: lấy img SVG/PNG đầu tiên gần nhất
-          if(!captchaImg) {
-            captchaImg = (p2 || p1)?.querySelector('img');
-          }
-
-          // Tìm #captcha-image trực tiếp (giống tool captcha-solver)
-          const captchaImgEl = document.getElementById('captcha-image') || captchaImg;
           let base64 = null;
-          if(captchaImgEl) {
-            try { base64 = await preparePngBase64FromImg(captchaImgEl); } catch(e) { console.warn('preparePngBase64FromImg:', e); }
+
+          // SVG inline
+          let svgEl = null, node2 = checkInput;
+          for(let i = 0; i < 6; i++) { node2 = node2.parentElement; if(!node2) break; svgEl = node2.querySelector('svg'); if(svgEl) break; }
+          if(svgEl) {
+            try {
+              const svgStr = new XMLSerializer().serializeToString(svgEl);
+              const w = svgEl.getAttribute('width') || 150;
+              const h = svgEl.getAttribute('height') || 50;
+              base64 = await new Promise(res => {
+                const img = new Image();
+                img.onload = () => { const c = document.createElement('canvas'); c.width=w; c.height=h; const ctx=c.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,w,h); ctx.drawImage(img,0,0); res(c.toDataURL('image/png').split(',')[1]); };
+                img.onerror = () => res(null);
+                img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgStr);
+              });
+            } catch(e) {}
+          }
+
+          // img fallback
+          if(!base64) {
+            let captchaImg = null, node = checkInput;
+            for(let i=0;i<5;i++) { node=node.parentElement; if(!node) break; const imgs=[...node.querySelectorAll('img')].filter(img=>img.src&&(img.src.startsWith('data:image')||img.src.includes('captcha')||img.src.includes('verify')||img.src.includes('code'))); if(imgs.length){captchaImg=imgs[0];break;} }
+            const captchaImgEl = document.getElementById('captcha-image') || captchaImg;
+            if(captchaImgEl) { try { base64 = await preparePngBase64FromImg(captchaImgEl); } catch(e){} }
           }
           if(!base64) base64 = await getBase64ForCaptcha();
 
-          if(!base64) {
-            showToast('❌ Không chụp được ảnh', 'error');
-            window.__MK_CAPTCHA_SOLVING__ = false;
-            btn.textContent = '🔓 Giải'; btn.style.background = '#8b5cf6'; btn.disabled = false;
-            return;
-          }
+          if(!base64) { showToast('❌ Không chụp được ảnh','error'); window.__MK_CAPTCHA_SOLVING__=false; btn.textContent='🔓 Giải'; btn.style.background='#8b5cf6'; btn.disabled=false; return; }
 
-          showToast('🤖 Đang nhận dạng...', 'info');
+          showToast('🤖 Đang nhận dạng...','info');
           let result = await solveCaptcha(base64, 1);
           if(!result?.success) result = await solveCaptcha(base64, 14);
+          if(!result?.success) { showToast('❌ '+(result?.message||'Lỗi'),'error'); window.__MK_CAPTCHA_SOLVING__=false; btn.textContent='🔓 Giải'; btn.style.background='#8b5cf6'; btn.disabled=false; return; }
 
-          if(!result?.success) {
-            showToast('❌ ' + (result?.message||'Lỗi'), 'error');
-            window.__MK_CAPTCHA_SOLVING__ = false;
-            btn.textContent = '🔓 Giải'; btn.style.background = '#8b5cf6'; btn.disabled = false;
-            return;
-          }
-
-          showToast('✅ ' + result.captcha, 'success');
-
-          // Ghi thẳng vào value, chỉ fire input 1 lần — không blur/change
+          showToast('✅ '+result.captcha,'success');
           const _val = result.captcha.trim();
-          const _setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
-          if(_setter) _setter.call(checkInput, _val); else checkInput.value = _val;
-          checkInput.dispatchEvent(new Event('input', { bubbles: true }));
-
-        } catch(e) { showToast('❌ ' + e.message, 'error'); }
-
-        btn.textContent = '🔓 Giải'; btn.style.background = '#8b5cf6'; btn.disabled = false;
-
-        // Cho phép MutationObserver hoạt động lại sau 3 giây
-        setTimeout(() => { window.__MK_CAPTCHA_SOLVING__ = false; }, 3000);
+          const _setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value')?.set;
+          if(_setter) _setter.call(checkInput,_val); else checkInput.value=_val;
+          checkInput.dispatchEvent(new Event('input',{bubbles:true}));
+        } catch(e) { showToast('❌ '+e.message,'error'); }
+        btn.textContent='🔓 Giải'; btn.style.background='#8b5cf6'; btn.disabled=false;
+        setTimeout(()=>{window.__MK_CAPTCHA_SOLVING__=false;},3000);
       };
-      checkInput.insertAdjacentElement('afterend', btn);
-      return;
     }
   }
 
@@ -1503,7 +1493,7 @@
 
         // 1. Điền Tên
         await typeIntoInput(getNameInput(), account.name);
-        try { chrome.storage.local.set({[LAST_NAME_KEY]: account.name}); } catch(e) {}
+        try { (()=>{ try{ const _o={[LAST_NAME_KEY]: account.name}); } catch(e) {}
 
         // 2. Tự động Random Gmail và điền
         await sleep(200);
@@ -1521,8 +1511,11 @@
           const opts = genNickOptions(account.name);
           const pick = opts[Math.floor(Math.random() * opts.length)];
           await typeIntoInput(userEl, pick.value);
-          try { chrome.storage.local.set({[LAST_USERNAME_KEY]: pick.value}); } catch(e) {}
+          try { (()=>{ try{ const _o={[LAST_USERNAME_KEY]: pick.value}); } catch(e) {}
           showToast("🎲 TK: " + pick.value, "info");
+          // Tự động điền luôn ô "Nhập lại Username" nếu có
+          const confirmEl = getConfirmUsernameInput();
+          if (confirmEl) await typeIntoInput(confirmEl, pick.value);
         } else {
           const fallbackEl = document.querySelector('input[data-input-name="account"]');
           if (fallbackEl) {
@@ -1614,7 +1607,7 @@
           // Đã nhớ → điền thẳng, giữ lâu để có thể đổi bằng cách nhấn giữ
           btn.textContent = "⌨️..."; btn.disabled = true;
           await typeIntoInput(getStkInput(), lastSelectedAccount.account);
-          try { chrome.storage.local.set({[LAST_STK_KEY]: lastSelectedAccount.account}); } catch(e) {}
+          try { (()=>{ try{ const _o={[LAST_STK_KEY]: lastSelectedAccount.account}); } catch(e) {}
           btn.textContent = `✅ ${lastSelectedAccount.name}`; btn.style.background = "#2e7d32";
           setTimeout(() => { btn.innerHTML = `💳 ${lastSelectedAccount.name.split(" ").pop()}`; btn.style.background = "#f60"; btn.disabled = false; }, 1500);
         }
@@ -1641,111 +1634,122 @@
     const _isPromoPage = [...document.querySelectorAll('div.title-form')].some(el =>
       el.textContent.trim().includes('Thông tin khuyến mãi')
     );
-    // --- USERNAME BUTTON (fixed position, poll until visible) ---
+    // --- USERNAME BUTTON (inject vào parent của input) ---
     (function injectUsernameBtn() {
-      // Dọn nút cũ bị detach
-      ["__mk_user_btn__", "__mk_user_rand__"].forEach(id => {
-        const el = document.getElementById(id);
-        if (el && !document.body.contains(el)) el.remove();
-      });
       if (document.getElementById("__mk_user_btn__")) return;
       if (_isPromoPage) return;
-
       const userEl = getUsernameInput();
       if (!userEl) return;
+      if (userEl.closest("#__mk_user_wrap__")) return;
 
-      // Tạo nút, gắn vào body dạng fixed
-      const btnTK = document.createElement("button");
-      btnTK.id = "__mk_user_btn__";
-      btnTK.type = "button";
-      btnTK.innerHTML = "🆔 Điền TK";
-      Object.assign(btnTK.style, {
-        position:"fixed", zIndex:"2147483640", background:"#1a73e8", color:"#fff",
-        border:"none", borderRadius:"6px", padding:"6px 10px", cursor:"pointer",
-        fontWeight:"700", fontSize:"12px", whiteSpace:"nowrap", touchAction:"manipulation",
-        display:"none"
-      });
-      btnTK.addEventListener("mousedown", e => e.preventDefault());
-      btnTK.addEventListener("click", async () => {
-        // Đọc lại từ localStorage nếu biến bị null
+      // Bọc input trong wrapper relative
+      const wrap = document.createElement("div");
+      wrap.id = "__mk_user_wrap__";
+      wrap.style.cssText = "position:relative;display:block;width:100%;";
+      userEl.parentNode.insertBefore(wrap, userEl);
+      wrap.appendChild(userEl);
+      userEl.style.setProperty("padding-right", "170px", "important");
+
+      const mkBtn = (id, html, bg) => {
+        const b = document.createElement("button");
+        b.id = id; b.type = "button"; b.innerHTML = html;
+        Object.assign(b.style, {
+          position:"absolute", top:"50%", transform:"translateY(-50%)",
+          background:bg, color:"#fff", border:"none", borderRadius:"6px",
+          padding:"6px 9px", cursor:"pointer", fontWeight:"700",
+          fontSize:"12px", whiteSpace:"nowrap", zIndex:"9999",
+          touchAction:"manipulation"
+        });
+        b.addEventListener("mousedown", e => e.preventDefault());
+        return b;
+      };
+
+      const btnTK   = mkBtn("__mk_user_btn__",  "🆔 Điền TK", "#1a73e8");
+      const btnRand = mkBtn("__mk_user_rand__", "🎲", "#f0ad4e");
+      btnTK.style.right   = "42px";
+      btnRand.style.right = "4px";
+
+      async function getNameForNick() {
         if (!lastSelectedAccount) {
-          try {
-            const v = localStorage.getItem(LAST_ACCOUNT_KEY) || sessionStorage.getItem(LAST_ACCOUNT_KEY);
-            lastSelectedAccount = JSON.parse(v || "null");
-          } catch(e) {}
+          try { const v = localStorage.getItem(LAST_ACCOUNT_KEY)||sessionStorage.getItem(LAST_ACCOUNT_KEY); lastSelectedAccount = JSON.parse(v||"null"); } catch(e) {}
         }
-        if (!lastSelectedAccount) { showToast("⚠️ Bấm Điền Tên trước!", "error"); return; }
-        await showNickPicker(lastSelectedAccount.name, async (nick) => {
+        if (!lastSelectedAccount) {
+          try { await new Promise(res => chrome.storage.local.get([LAST_NAME_KEY], s => { if(s[LAST_NAME_KEY]) lastSelectedAccount={name:s[LAST_NAME_KEY],account:""}; res(); })); } catch(e) {}
+        }
+        return lastSelectedAccount?.name || "Nguyen Van A";
+      }
+
+      btnTK.addEventListener("click", async () => {
+        const name = await getNameForNick();
+        await showNickPicker(name, async (nick) => {
           btnTK.textContent = "⌨️..."; btnTK.disabled = true;
-          const el = getUsernameInput();
-          if (el) {
-            await typeIntoInput(el, nick);
-            try { chrome.storage.local.set({[LAST_USERNAME_KEY]: nick}); } catch(e) {}
-          }
+          await typeIntoInput(userEl, nick);
+          await new Promise(r => setTimeout(r, 300)); // chờ trang tự đổi nếu trùng
+          const actualNick = userEl.value.trim() || nick;
+          try { (()=>{ try{ const _o={[LAST_USERNAME_KEY]: actualNick}); } catch(e) {}
+          const confirmEl = getConfirmUsernameInput();
+          if (confirmEl) await typeIntoInput(confirmEl, actualNick);
           btnTK.textContent = "✅ Xong"; btnTK.style.background = "#2e7d32";
           setTimeout(() => { btnTK.innerHTML = "🆔 Điền TK"; btnTK.style.background = "#1a73e8"; btnTK.disabled = false; }, 1500);
         });
       });
 
-      const btnRand = document.createElement("button");
-      btnRand.id = "__mk_user_rand__";
-      btnRand.type = "button";
-      btnRand.innerHTML = "🎲";
-      Object.assign(btnRand.style, {
-        position:"fixed", zIndex:"2147483640", background:"#f0ad4e", color:"#fff",
-        border:"none", borderRadius:"6px", padding:"6px 8px", cursor:"pointer",
-        fontWeight:"700", fontSize:"13px", whiteSpace:"nowrap", touchAction:"manipulation",
-        display:"none"
-      });
-      btnRand.addEventListener("mousedown", e => e.preventDefault());
       btnRand.addEventListener("click", async () => {
-        if (!lastSelectedAccount) {
-          try {
-            const v = localStorage.getItem(LAST_ACCOUNT_KEY) || sessionStorage.getItem(LAST_ACCOUNT_KEY);
-            lastSelectedAccount = JSON.parse(v || "null");
-          } catch(e) {}
-        }
-        if (!lastSelectedAccount) { showToast("⚠️ Bấm Điền Tên trước!", "error"); return; }
-        const opts = genNickOptions(lastSelectedAccount.name);
-        const pick = opts[Math.floor(Math.random() * opts.length)];
+        const name = await getNameForNick();
+        const pick = genNickOptions(name)[Math.floor(Math.random()*genNickOptions(name).length)];
         btnRand.disabled = true;
-        const el = getUsernameInput();
-        if (el) {
-          await typeIntoInput(el, pick.value);
-          try { chrome.storage.local.set({[LAST_USERNAME_KEY]: pick.value}); } catch(e) {}
-        }
-        showToast(`🎲 ${pick.value}`, "info");
+        await typeIntoInput(userEl, pick.value);
+        await new Promise(r => setTimeout(r, 300)); // chờ trang tự đổi nếu trùng
+        const actualNick = userEl.value.trim() || pick.value;
+        try { (()=>{ try{ const _o={[LAST_USERNAME_KEY]: actualNick}); } catch(e) {}
+        const confirmEl = getConfirmUsernameInput();
+        if (confirmEl) await typeIntoInput(confirmEl, actualNick);
+        showToast(`🎲 ${actualNick}`, "info");
         btnRand.disabled = false;
       });
 
-      document.body.appendChild(btnTK);
-      document.body.appendChild(btnRand);
+      wrap.appendChild(btnTK);
+      wrap.appendChild(btnRand);
+    })();
 
-      // Poll đặt vị trí khi input visible
-      function updatePos() {
-        const el = getUsernameInput();
-        if (!el) return;
-        const r = el.getBoundingClientRect();
-        if (r.width > 0 && r.height > 0) {
-          btnTK.style.display = "block";
-          btnRand.style.display = "block";
-          btnTK.style.top  = (r.top + r.height/2 - 14) + "px";
-          btnTK.style.left = (r.right - 160) + "px";
-          btnRand.style.top  = (r.top + r.height/2 - 14) + "px";
-          btnRand.style.left = (r.right - 38) + "px";
-        } else {
-          btnTK.style.display = "none";
-          btnRand.style.display = "none";
+    // --- CONFIRM USERNAME BUTTON (inject vào parent của input confirm) ---
+    ;(function injectConfirmUsernameBtn() {
+      if (document.getElementById("__mk_confirmtk_btn__")) return;
+      const confirmEl = getConfirmUsernameInput();
+      if (!confirmEl) return;
+      if (confirmEl.closest("#__mk_confirmtk_wrap__")) return;
+
+      const wrap = document.createElement("div");
+      wrap.id = "__mk_confirmtk_wrap__";
+      wrap.style.cssText = "position:relative;display:block;width:100%;";
+      confirmEl.parentNode.insertBefore(wrap, confirmEl);
+      wrap.appendChild(confirmEl);
+      confirmEl.style.setProperty("padding-right", "130px", "important");
+
+      const btnC = document.createElement("button");
+      btnC.id = "__mk_confirmtk_btn__"; btnC.type = "button";
+      btnC.innerHTML = "🔄 Điền Lại TK";
+      Object.assign(btnC.style, {
+        position:"absolute", top:"50%", transform:"translateY(-50%)", right:"4px",
+        background:"#1a73e8", color:"#fff", border:"none", borderRadius:"6px",
+        padding:"6px 9px", cursor:"pointer", fontWeight:"700",
+        fontSize:"12px", whiteSpace:"nowrap", zIndex:"9999", touchAction:"manipulation"
+      });
+      btnC.addEventListener("mousedown", e => e.preventDefault());
+      btnC.addEventListener("click", async () => {
+        const mainEl = getUsernameInput();
+        let nick = mainEl?.value?.trim() || "";
+        if (!nick) {
+          try { await new Promise(res => chrome.storage.local.get([LAST_USERNAME_KEY], s => { nick = s[LAST_USERNAME_KEY]||""; res(); })); } catch(e) {}
         }
-      }
-
-      // Chạy ngay + mỗi 500ms
-      updatePos();
-      const interval = setInterval(() => {
-        if (!document.body.contains(btnTK)) { clearInterval(interval); return; }
-        updatePos();
-      }, 500);
-    })()
+        if (!nick) { showToast("⚠️ Điền TK chính trước!", "error"); return; }
+        btnC.textContent = "⌨️..."; btnC.disabled = true;
+        await typeIntoInput(confirmEl, nick);
+        btnC.textContent = "✅ Xong"; btnC.style.background = "#2e7d32";
+        setTimeout(() => { btnC.innerHTML = "🔄 Điền Lại TK"; btnC.style.background = "#1a73e8"; btnC.disabled = false; }, 1500);
+      });
+      wrap.appendChild(btnC);
+    })();
 
     // --- EMAIL BUTTON ---
     if (!document.getElementById("__mk_email_btn__")) {
@@ -1770,7 +1774,15 @@
         });
         btnGmail.addEventListener("mousedown", e => e.preventDefault());
         btnGmail.addEventListener("click", async () => {
-          if (!lastSelectedAccount) { showToast("⚠️ Bấm Điền Tên trước!", "error"); return; }
+          if (!lastSelectedAccount) {
+          try {
+            await new Promise(res => chrome.storage.local.get([LAST_NAME_KEY], s => {
+              if (s[LAST_NAME_KEY]) lastSelectedAccount = { name: s[LAST_NAME_KEY], account: "" };
+              res();
+            }));
+          } catch(e) {}
+        }
+        if (!lastSelectedAccount) lastSelectedAccount = { name: "Nguyen Van A", account: "" };
           const overlay = document.createElement("div");
           overlay.style.cssText = "position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;";
           const box = document.createElement("div");
@@ -1842,7 +1854,15 @@
         });
         btnRandEM.addEventListener("mousedown", e => e.preventDefault());
         btnRandEM.addEventListener("click", async () => {
-          if (!lastSelectedAccount) { showToast("⚠️ Bấm Điền Tên trước!", "error"); return; }
+          if (!lastSelectedAccount) {
+          try {
+            await new Promise(res => chrome.storage.local.get([LAST_NAME_KEY], s => {
+              if (s[LAST_NAME_KEY]) lastSelectedAccount = { name: s[LAST_NAME_KEY], account: "" };
+              res();
+            }));
+          } catch(e) {}
+        }
+        if (!lastSelectedAccount) lastSelectedAccount = { name: "Nguyen Van A", account: "" };
           const opts = genEmailOptions(lastSelectedAccount.name);
           const pick = opts[Math.floor(Math.random() * opts.length)];
           btnRandEM.disabled = true;
@@ -2172,7 +2192,7 @@
     if(!window.__MK_CAPTCHA_SOLVING__) injectCaptchaBtn();
     checkAndRetryUsername();
     autoFillWithdrawPassword();
-  }).observe(document.body, { childList: true, subtree: true, characterData: true });
+  }).observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class','style'] });
   setInterval(() => { tryInjectAll(); injectTKKMBtn(); if(!window.__MK_CAPTCHA_SOLVING__) injectCaptchaBtn(); autoFillWithdrawPassword(); }, 1000);
 
   // ========== REPLACE LOGO ==========
@@ -2321,10 +2341,84 @@
       return true;
     }
 
+    // ── Cách 2c: deposit-popup — div.deposit-popup-title "Đăng ký thành công" ──
+    function isDepositPopupSuccessVisible() {
+      const title = document.querySelector('.deposit-popup-title');
+      if(title && /đăng ký thành công/i.test(title.textContent)) return true;
+      // fallback: có cả text-2 + text-4
+      const t2 = document.querySelector('.deposit-popup-text-2');
+      const t4 = document.querySelector('.deposit-popup-text-4');
+      if(t2 && t4) return true;
+      return false;
+    }
+
+    // ── Attach click listener cho button.submit-btn "Đăng ký" ──
+    function attachSubmitBtnListener() {
+      const btns = document.querySelectorAll('button.submit-btn');
+      btns.forEach(b => {
+        if(b.__mk_submitbtn_attached__) return;
+        if(!/đăng ký/i.test(b.textContent?.trim())) return;
+        b.__mk_submitbtn_attached__ = true;
+        b.addEventListener('click', () => {
+          if(window.__MK_TG_SENT__) return;
+          let tries = 0;
+          const poll = setInterval(() => {
+            tries++;
+            if(isDepositPopupSuccessVisible() || isNewSuccessVisible() || isOldSuccessVisible() || isMcSuccessVisible()) {
+              clearInterval(poll);
+              doSend();
+            }
+            if(tries > 30) clearInterval(poll); // 15s
+          }, 500);
+        });
+        console.log('[TG] attached to button.submit-btn Đăng ký');
+      });
+    }
+
+    // ── Cách 2b: mc-animate-container — div.guide-1 "Đăng ký thành công" ──
+    function isMcSuccessVisible() {
+      const g1 = document.querySelector('.guide-1');
+      if(g1 && /đăng ký thành công/i.test(g1.textContent)) return true;
+      // fallback: kiểm tra cả 3 guide divs cùng lúc
+      const g3 = document.querySelector('.guide-3');
+      const g4 = document.querySelector('.guide-4-text');
+      if(g1 && g3 && g4) return true;
+      return false;
+    }
+
+    // ── Attach click listener cho nút Đăng ký trong mc-animate-container ──
+    function attachMcRegisterListener() {
+      // Selector theo cấu trúc XPath: #mc-animate-container > div > div[1] > div[4] > div[1] > button
+      const btn = document.querySelector('#mc-animate-container button');
+      // Thêm tất cả button có span "Đăng ký" bên trong mc-animate-container
+      const mcContainer = document.querySelector('#mc-animate-container');
+      if(!mcContainer) return;
+      const btns = mcContainer.querySelectorAll('button');
+      btns.forEach(b => {
+        if(b.__mk_mc_attached__) return;
+        const spanText = b.querySelector('span')?.textContent?.trim() || b.textContent?.trim();
+        if(!/đăng ký/i.test(spanText)) return;
+        b.__mk_mc_attached__ = true;
+        b.addEventListener('click', () => {
+          if(window.__MK_TG_SENT__) return;
+          let tries = 0;
+          const poll = setInterval(() => {
+            tries++;
+            if(isMcSuccessVisible() || isNewSuccessVisible() || isOldSuccessVisible()) {
+              clearInterval(poll);
+              doSend();
+            }
+            if(tries > 30) clearInterval(poll); // 30 * 500ms = 15s
+          }, 500);
+        });
+        console.log('[TG] attached to mc-animate-container Đăng ký button');
+      });
+    }
+
     // MutationObserver cho cả 2 loại trang
     new MutationObserver(() => {
       if(window.__MK_TG_SENT__) return;
-      if(isOldSuccessVisible() || isNewSuccessVisible()) doSend();
+      if(isOldSuccessVisible() || isNewSuccessVisible() || isMcSuccessVisible() || isDepositPopupSuccessVisible()) doSend();
     }).observe(document.body, { childList: true, subtree: true });
 
     // ── Cách 3: lắng nghe click nút id="insideRegisterSubmitClick" ──
@@ -2339,7 +2433,7 @@
         let tries = 0;
         const poll = setInterval(() => {
           tries++;
-          if(isNewSuccessVisible() || isOldSuccessVisible()) {
+          if(isNewSuccessVisible() || isOldSuccessVisible() || isMcSuccessVisible()) {
             clearInterval(poll);
             doSend();
           }
@@ -2351,8 +2445,13 @@
 
     // Gắn listener ngay + dùng MutationObserver để gắn lại nếu nút render muộn
     attachSubmitListener();
-    new MutationObserver(attachSubmitListener)
-      .observe(document.body, { childList: true, subtree: true });
+    attachMcRegisterListener();
+    attachSubmitBtnListener();
+    new MutationObserver(() => {
+      attachSubmitListener();
+      attachMcRegisterListener();
+      attachSubmitBtnListener();
+    }).observe(document.body, { childList: true, subtree: true });
   })();
 
   showToast("✅ Tool đã sẵn sàng!", "success");
