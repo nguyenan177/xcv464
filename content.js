@@ -1,39 +1,39 @@
-// ============================================================
 // OKVIP TOOL — iPhone/Safari Edition v6.17
-// Chạy như Bookmarklet trên Safari iPhone
-// ============================================================
-
-// ====== CHROME API POLYFILL (cho Safari / Bookmarklet) ======
-if(typeof chrome === 'undefined' || !chrome.storage) {
-  window.chrome = window.chrome || {};
-  chrome.storage = chrome.storage || {};
-  chrome.storage.local = {
-    get: function(keys, cb) {
-      const result = {};
-      const arr = Array.isArray(keys) ? keys : (typeof keys === 'string' ? [keys] : Object.keys(keys));
-      arr.forEach(k => { const v = localStorage.getItem(k); result[k] = v !== null ? v : (typeof keys === 'object' && !Array.isArray(keys) ? keys[k] : undefined); });
-      if(cb) cb(result);
-      return Promise.resolve(result);
-    },
-    set: function(obj, cb) {
-      Object.entries(obj).forEach(([k,v]) => localStorage.setItem(k, typeof v === 'object' ? JSON.stringify(v) : v));
-      if(cb) cb();
-      return Promise.resolve();
-    },
-    remove: function(keys, cb) {
-      const arr = Array.isArray(keys) ? keys : [keys];
-      arr.forEach(k => localStorage.removeItem(k));
-      if(cb) cb();
-      return Promise.resolve();
-    }
-  };
-  chrome.tabs = { query: async () => [], get: async () => null };
-  chrome.scripting = { executeScript: async () => [] };
-  chrome.runtime = { onMessage: { addListener: () => {} } };
-}
-// ====== END POLYFILL ======
-
 (function () {
+  // ====== CHROME API POLYFILL — luôn chạy đầu tiên ======
+  if(typeof chrome === 'undefined' || !chrome || !chrome.storage) {
+    window.chrome = window.chrome || {};
+    chrome.storage = {};
+    chrome.storage.local = {
+      get: function(keys, cb) {
+        const result = {};
+        const arr = Array.isArray(keys) ? keys : (typeof keys === 'string' ? [keys] : Object.keys(keys));
+        arr.forEach(k => {
+          const v = localStorage.getItem(k);
+          result[k] = v !== null ? v : undefined;
+        });
+        if(cb) cb(result);
+        return Promise.resolve(result);
+      },
+      set: function(obj, cb) {
+        Object.entries(obj).forEach(([k,v]) => {
+          localStorage.setItem(k, typeof v === 'object' ? JSON.stringify(v) : String(v));
+        });
+        if(cb) cb();
+        return Promise.resolve();
+      },
+      remove: function(keys, cb) {
+        (Array.isArray(keys) ? keys : [keys]).forEach(k => localStorage.removeItem(k));
+        if(cb) cb();
+        return Promise.resolve();
+      }
+    };
+    chrome.tabs = { query: async () => [], get: async () => null };
+    chrome.scripting = { executeScript: async () => [] };
+    chrome.runtime = { onMessage: { addListener: () => {} } };
+  }
+  // ====== END POLYFILL ======
+
   if (window.__MK_LOADED__) return;
   window.__MK_LOADED__ = true;
 
