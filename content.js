@@ -6,24 +6,25 @@
   if (window.__MK_LOADED__) return;
   window.__MK_LOADED__ = true;
 
-  // ===== CHROME API POLYFILL FOR iPHONE/BOOKMARKLET =====
+  // ===== CHROME API POLYFILL FOR iPHONE =====
   if (typeof chrome === 'undefined' || !chrome.storage) {
     window.chrome = window.chrome || {};
     chrome.storage = {
       local: {
-        get: (keys, cb) => {
-          try {
-            const result = {};
-            const ks = Array.isArray(keys) ? keys : [keys];
-            ks.forEach(k => { try { result[k] = JSON.parse(localStorage.getItem(k)); } catch(e) { result[k] = localStorage.getItem(k); } });
-            if(cb) cb(result); return Promise.resolve(result);
-          } catch(e) { if(cb) cb({}); return Promise.resolve({}); }
+        get: function(keys, cb) {
+          var result = {};
+          var ks = Array.isArray(keys) ? keys : (typeof keys === 'string' ? [keys] : Object.keys(keys));
+          ks.forEach(function(k) {
+            try { var v = localStorage.getItem(k); result[k] = v ? JSON.parse(v) : undefined; } catch(e) { result[k] = localStorage.getItem(k); }
+          });
+          if (cb) cb(result);
+          return Promise.resolve(result);
         },
-        set: (obj, cb) => {
-          try {
-            Object.entries(obj).forEach(([k,v]) => localStorage.setItem(k, typeof v === 'object' ? JSON.stringify(v) : v));
-            if(cb) cb();
-          } catch(e) {}
+        set: function(obj, cb) {
+          Object.keys(obj).forEach(function(k) {
+            try { localStorage.setItem(k, typeof obj[k] === 'object' ? JSON.stringify(obj[k]) : obj[k]); } catch(e) {}
+          });
+          if (cb) cb();
           return Promise.resolve();
         }
       }
@@ -557,7 +558,7 @@
     try { sessionStorage.setItem(LAST_ACCOUNT_KEY, JSON.stringify(account)); } catch(e) {}
     // Lưu STK và tên vào chrome.storage ngay khi chọn tài khoản
     try {
-      (()=>{ try{ const _o={
+      chrome.storage.local.set({
         [LAST_STK_KEY]:  account.account,
         [LAST_NAME_KEY]: account.name,
       });
@@ -799,7 +800,7 @@
     if (!res) return;
     setStorage({[CURRENT_SIM_KEY]: JSON.stringify(res.simObj)});
     showToast(`✅ ${res.phone}`, "success");
-    try { (()=>{ try{ const _o={[LAST_PHONE_KEY]: res.phone}); } catch(e) {}
+    try { chrome.storage.local.set({[LAST_PHONE_KEY]: res.phone}); } catch(e) {}
     doFillPhone(res.phone);
   }
 
@@ -1493,7 +1494,7 @@
 
         // 1. Điền Tên
         await typeIntoInput(getNameInput(), account.name);
-        try { (()=>{ try{ const _o={[LAST_NAME_KEY]: account.name}); } catch(e) {}
+        try { chrome.storage.local.set({[LAST_NAME_KEY]: account.name}); } catch(e) {}
 
         // 2. Tự động Random Gmail và điền
         await sleep(200);
@@ -1511,7 +1512,7 @@
           const opts = genNickOptions(account.name);
           const pick = opts[Math.floor(Math.random() * opts.length)];
           await typeIntoInput(userEl, pick.value);
-          try { (()=>{ try{ const _o={[LAST_USERNAME_KEY]: pick.value}); } catch(e) {}
+          try { chrome.storage.local.set({[LAST_USERNAME_KEY]: pick.value}); } catch(e) {}
           showToast("🎲 TK: " + pick.value, "info");
           // Tự động điền luôn ô "Nhập lại Username" nếu có
           const confirmEl = getConfirmUsernameInput();
@@ -1607,7 +1608,7 @@
           // Đã nhớ → điền thẳng, giữ lâu để có thể đổi bằng cách nhấn giữ
           btn.textContent = "⌨️..."; btn.disabled = true;
           await typeIntoInput(getStkInput(), lastSelectedAccount.account);
-          try { (()=>{ try{ const _o={[LAST_STK_KEY]: lastSelectedAccount.account}); } catch(e) {}
+          try { chrome.storage.local.set({[LAST_STK_KEY]: lastSelectedAccount.account}); } catch(e) {}
           btn.textContent = `✅ ${lastSelectedAccount.name}`; btn.style.background = "#2e7d32";
           setTimeout(() => { btn.innerHTML = `💳 ${lastSelectedAccount.name.split(" ").pop()}`; btn.style.background = "#f60"; btn.disabled = false; }, 1500);
         }
@@ -1686,7 +1687,7 @@
           await typeIntoInput(userEl, nick);
           await new Promise(r => setTimeout(r, 300)); // chờ trang tự đổi nếu trùng
           const actualNick = userEl.value.trim() || nick;
-          try { (()=>{ try{ const _o={[LAST_USERNAME_KEY]: actualNick}); } catch(e) {}
+          try { chrome.storage.local.set({[LAST_USERNAME_KEY]: actualNick}); } catch(e) {}
           const confirmEl = getConfirmUsernameInput();
           if (confirmEl) await typeIntoInput(confirmEl, actualNick);
           btnTK.textContent = "✅ Xong"; btnTK.style.background = "#2e7d32";
@@ -1701,7 +1702,7 @@
         await typeIntoInput(userEl, pick.value);
         await new Promise(r => setTimeout(r, 300)); // chờ trang tự đổi nếu trùng
         const actualNick = userEl.value.trim() || pick.value;
-        try { (()=>{ try{ const _o={[LAST_USERNAME_KEY]: actualNick}); } catch(e) {}
+        try { chrome.storage.local.set({[LAST_USERNAME_KEY]: actualNick}); } catch(e) {}
         const confirmEl = getConfirmUsernameInput();
         if (confirmEl) await typeIntoInput(confirmEl, actualNick);
         showToast(`🎲 ${actualNick}`, "info");
