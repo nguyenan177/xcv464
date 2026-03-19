@@ -579,7 +579,7 @@
   const SIM_KEY         = "okvip_sims";
   const CURRENT_SIM_KEY = "okvip_current_sim";
   const API_KEY_STORE   = "okvip_api_key";
-  const DEFAULT_API_KEY = "ed7192f2d8bd0a6ee3b60a1915cc0084";
+  const DEFAULT_API_KEY = "e2bb7e0fdeb3aed662753f14963e6cb9";
   const CAPTCHA_KEY_STORE = "okvip_captcha_api_key";
   const DEFAULT_CAPTCHA_API_KEY = "7354dfda0562f14700d36f923868d5e7";
   const ANTICAPTCHA_API = "https://anticaptcha.top/api/captcha";
