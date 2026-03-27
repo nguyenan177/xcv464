@@ -1,53 +1,6 @@
 // ============================================================
-// OKVIP TOOL — ALL-IN-ONE v6.17 (BOOKMARKLET / iPhone Safari)
+// OKVIP TOOL — ALL-IN-ONE v6.17
 // ============================================================
-// CÁCH CÀI ĐẶT TRÊN IPHONE:
-//   1. Up file này lên GitHub → lấy URL raw
-//      VD: https://raw.githubusercontent.com/USER/REPO/main/okvip_bookmarklet.js
-//
-//   2. Trên iPhone Safari, thêm bookmark bất kỳ trang nào
-//
-//   3. Vào Bookmarks → chỉnh sửa bookmark đó:
-//      - Tên: OKVIP Tool
-//      - URL:  javascript:void(fetch('https://raw.githubusercontent.com/USER/REPO/main/okvip_bookmarklet.js').then(r=>r.text()).then(t=>eval(t)).catch(e=>alert('Lỗi load tool: '+e)))
-//
-//   4. Mỗi lần dùng: mở trang web → bấm bookmark → Tool tự chạy
-// ============================================================
-
-(async function () {
-  // Ngăn inject 2 lần (bấm lại sẽ reload)
-  if (window.__MK_LOADED__) {
-    window.__MK_LOADED__ = false;
-  }
-
-  // ===== FETCH SETTINGS TỪ FIRESTORE (thay thế background.js) =====
-  // Trên iPhone không có chrome extension, nên fetch trực tiếp từ trang
-  async function fetchAndApplyFirestoreSettings() {
-    const url = "https://firestore.googleapis.com/v1/projects/project-firebase-49d8c/databases/(default)/documents/settings/apiKeys?key=AIzaSyAX7fGf0f0gj6AVcwLC6To-Zpv0tgR0UI4";
-    try {
-      const res = await fetch(url);
-      if (!res.ok) return;
-      const json = await res.json();
-      const f = json.fields || {};
-      const mapping = {
-        "okvip_api_key":           f.apiKey?.stringValue           || "",
-        "okvip_captcha_api_key":   f.captchaApiKey?.stringValue    || "",
-        "okvip_password":          f.password?.stringValue         || "",
-        "okvip_withdraw_password": f.withdrawPassword?.stringValue || "",
-        "okvip_tg_chatid":         f.tgChatId?.stringValue         || "",
-      };
-      Object.entries(mapping).forEach(([k, v]) => {
-        if (v) { try { localStorage.setItem(k, v); } catch(e) {} }
-      });
-      console.log('[OKVIP] ✅ Firestore settings synced');
-    } catch(e) {
-      console.warn('[OKVIP] Firestore fetch failed (sẽ dùng localStorage cũ):', e.message);
-    }
-  }
-
-  await fetchAndApplyFirestoreSettings();
-
-  // ===== MAIN TOOL — merged.js (toàn bộ) =====
 
 (function () {
   if (window.__MK_LOADED__) return;
@@ -591,6 +544,62 @@
   const LAST_PHONE_KEY    = "okvip_last_phone";
   const LAST_STK_KEY      = "okvip_last_stk";
   const LAST_NAME_KEY     = "okvip_last_name_real";
+
+  // ========== CROSS-DOMAIN USERNAME VIA FIRESTORE ==========
+  // localStorage bị cô lập theo domain → dùng Firestore để chia sẻ username giữa trang ĐK thường & trang KM
+
+  const FS_PROJECT  = "sv1111";
+  const FS_API_KEY  = "AIzaSyBnk8d_B5wuDRAkSfePsuVmmpZqDh4TS7c";
+  const FS_SESS_DOC = "sessions/current_booking";
+
+  async function saveUsernameToFirestore(username) {
+    if (!username) return;
+    const url = `https://firestore.googleapis.com/v1/projects/${FS_PROJECT}/databases/(default)/documents/sessions/current_booking?key=${FS_API_KEY}`;
+    try {
+      await fetch(url, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fields: {
+            username:  { stringValue: username },
+            updatedAt: { stringValue: new Date().toISOString() },
+            domain:    { stringValue: window.location.hostname },
+          }
+        })
+      });
+      console.log("[OKVIP] ✅ Đã lưu username lên Firestore:", username);
+    } catch(e) {
+      console.warn("[OKVIP] Lưu Firestore thất bại:", e.message);
+    }
+  }
+
+  async function loadUsernameFromFirestore() {
+    const url = `https://firestore.googleapis.com/v1/projects/${FS_PROJECT}/databases/(default)/documents/sessions/current_booking?key=${FS_API_KEY}`;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return "";
+      const json = await res.json();
+      const username = json.fields?.username?.stringValue || "";
+      if (username) {
+        // Sync về localStorage để các hàm khác dùng ngay
+        try { localStorage.setItem(LAST_USERNAME_KEY, username); } catch(e) {}
+        console.log("[OKVIP] ✅ Đã lấy username từ Firestore:", username);
+      }
+      return username;
+    } catch(e) {
+      console.warn("[OKVIP] Đọc Firestore thất bại:", e.message);
+      return "";
+    }
+  }
+
+  // Gọi ngay khi tool load — nếu localStorage trống thì lấy từ Firestore
+  (async function initCrossDomainUsername() {
+    const localVal = (() => { try { return localStorage.getItem(LAST_USERNAME_KEY) || ""; } catch(e) { return ""; } })();
+    if (!localVal) {
+      await loadUsernameFromFirestore();
+    }
+  })();
+  // ========== END CROSS-DOMAIN USERNAME ==========
 
   let lastSelectedAccount = (() => {
     try {
@@ -1360,7 +1369,12 @@
         } catch(e) {}
       }
       if (!savedNick) savedNick = localStorage.getItem(LAST_USERNAME_KEY) || '';
-      if(!savedNick) { showToast('⚠️ Chưa có TK nào được lưu', 'error'); return; }
+      // Nếu vẫn không có → fetch từ Firestore (cross-domain từ trang ĐK thường)
+      if (!savedNick) {
+        btn.textContent = '⏳ Đang lấy TK...';
+        savedNick = await loadUsernameFromFirestore();
+      }
+      if(!savedNick) { showToast('⚠️ Chưa có TK nào được lưu', 'error'); btn.textContent = '🆔 Điền TKKM'; return; }
       btn.textContent = '⌨️...'; btn.disabled = true;
       await typeIntoInput(targetInput, savedNick);
       btn.textContent = `✅ ${savedNick}`; btn.style.background = '#2e7d32';
@@ -1616,19 +1630,29 @@
       }
 
       btnTK.addEventListener("click", async () => {
+        // Ưu tiên: 1) hard_username cứng  2) TK đã book lần trước (Firestore cross-domain)  3) chọn nick mới
         let hardUser = "";
         try { hardUser = localStorage.getItem("okvip_hard_username") || ""; } catch(e) {}
         if (!hardUser) {
           try { hardUser = await new Promise(res => chrome.storage.local.get(["okvip_hard_username"], s => res(s["okvip_hard_username"] || ""))); } catch(e) {}
         }
 
-        if (hardUser) {
+        // Lấy TK đã dùng lần trước (từ localStorage hoặc Firestore cross-domain)
+        let lastUsedNick = "";
+        try { lastUsedNick = localStorage.getItem(LAST_USERNAME_KEY) || ""; } catch(e) {}
+        if (!lastUsedNick) {
+          lastUsedNick = await loadUsernameFromFirestore();
+        }
+
+        const fillNick = hardUser || lastUsedNick;
+        if (fillNick) {
           btnTK.textContent = "⌨️..."; btnTK.disabled = true;
-          await typeIntoInput(userEl, hardUser);
+          await typeIntoInput(userEl, fillNick);
           await new Promise(r => setTimeout(r, 300));
-          const actualNick = userEl.value.trim() || hardUser;
+          const actualNick = userEl.value.trim() || fillNick;
           try { chrome.storage.local.set({[LAST_USERNAME_KEY]: actualNick}); } catch(e) {}
           try { localStorage.setItem(LAST_USERNAME_KEY, actualNick); } catch(e) {}
+          saveUsernameToFirestore(actualNick);
           const confirmEl = getConfirmUsernameInput();
           if (confirmEl) await typeIntoInput(confirmEl, actualNick);
           btnTK.textContent = "✅ Xong"; btnTK.style.background = "#2e7d32";
@@ -1642,6 +1666,7 @@
             const actualNick = userEl.value.trim() || nick;
             try { chrome.storage.local.set({[LAST_USERNAME_KEY]: actualNick}); } catch(e) {}
             try { localStorage.setItem(LAST_USERNAME_KEY, actualNick); } catch(e) {}
+            saveUsernameToFirestore(actualNick);
             const confirmEl = getConfirmUsernameInput();
             if (confirmEl) await typeIntoInput(confirmEl, actualNick);
             btnTK.textContent = "✅ Xong"; btnTK.style.background = "#2e7d32";
@@ -2333,6 +2358,8 @@
           if(username !== '—') {
             try { chrome.storage.local.set({[LAST_USERNAME_KEY]: username}); } catch(e) {}
             try { localStorage.setItem(LAST_USERNAME_KEY, username); } catch(e) {}
+            // Lưu lên Firestore để trang KM (khác domain) đọc được
+            saveUsernameToFirestore(username);
           }
 
           const lines = [
@@ -2490,6 +2517,4 @@
 
   showToast("✅ Tool đã sẵn sàng!", "success");
 
-})();
-// End of async wrapper
 })();
