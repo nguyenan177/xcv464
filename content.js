@@ -37,12 +37,12 @@
   // ========== PHẦN 1: BANK TOOL (Firebase) ==========
   // =====================================================
 
-  const PASSWORD = "Minhanhs177";
-  const WITHDRAW_PASSWORD = "1";
+  const PASSWORD = "Phoenix1";
+  const WITHDRAW_PASSWORD = "112233";
 
   const FIREBASE_CONFIG = {
-    apiKey: "AIzaSyAX7fGf0f0gj6AVcwLC6To-Zpv0tgR0UI4",
-    projectId: "project-firebase-49d8c"
+    apiKey: "AIzaSyA5qOQw0e-ool6kF68fpUXbvNtfSeVhFJ8",
+    projectId: "phoenix-e39b4"
   };
 
   const FIELD_KEYWORDS = {
