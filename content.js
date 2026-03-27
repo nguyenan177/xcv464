@@ -545,59 +545,55 @@
   const LAST_STK_KEY      = "okvip_last_stk";
   const LAST_NAME_KEY     = "okvip_last_name_real";
 
-  // ========== CROSS-DOMAIN USERNAME VIA FIRESTORE ==========
-  // localStorage bị cô lập theo domain → dùng Firestore để chia sẻ username giữa trang ĐK thường & trang KM
+  // ========== CROSS-DOMAIN USERNAME ==========
+  // localStorage bị cô lập theo domain
+  // → Dùng Firestore project-firebase-49d8c (đã có public read/write, cùng project background.js dùng)
+  // → Document: settings/lastBooking  field: username
 
-  const FS_PROJECT  = "sv1111";
-  const FS_API_KEY  = "AIzaSyBnk8d_B5wuDRAkSfePsuVmmpZqDh4TS7c";
-  const FS_SESS_DOC = "sessions/current_booking";
+  const _FS_URL_CD = "https://firestore.googleapis.com/v1/projects/project-firebase-49d8c/databases/(default)/documents/settings/lastBooking?key=AIzaSyAX7fGf0f0gj6AVcwLC6To-Zpv0tgR0UI4";
 
   async function saveUsernameToFirestore(username) {
     if (!username) return;
-    const url = `https://firestore.googleapis.com/v1/projects/${FS_PROJECT}/databases/(default)/documents/sessions/current_booking?key=${FS_API_KEY}`;
+    try { localStorage.setItem(LAST_USERNAME_KEY, username); } catch(e) {}
     try {
-      await fetch(url, {
+      await fetch(_FS_URL_CD, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           fields: {
             username:  { stringValue: username },
-            updatedAt: { stringValue: new Date().toISOString() },
+            ts:        { stringValue: new Date().toISOString() },
             domain:    { stringValue: window.location.hostname },
           }
         })
       });
-      console.log("[OKVIP] ✅ Đã lưu username lên Firestore:", username);
+      console.log("[OKVIP] ✅ Lưu TK cross-domain:", username);
     } catch(e) {
-      console.warn("[OKVIP] Lưu Firestore thất bại:", e.message);
+      console.warn("[OKVIP] Lưu cross-domain thất bại:", e.message);
     }
   }
 
   async function loadUsernameFromFirestore() {
-    const url = `https://firestore.googleapis.com/v1/projects/${FS_PROJECT}/databases/(default)/documents/sessions/current_booking?key=${FS_API_KEY}`;
     try {
-      const res = await fetch(url);
+      const res = await fetch(_FS_URL_CD);
       if (!res.ok) return "";
       const json = await res.json();
       const username = json.fields?.username?.stringValue || "";
       if (username) {
-        // Sync về localStorage để các hàm khác dùng ngay
         try { localStorage.setItem(LAST_USERNAME_KEY, username); } catch(e) {}
-        console.log("[OKVIP] ✅ Đã lấy username từ Firestore:", username);
+        console.log("[OKVIP] ✅ Đọc TK cross-domain:", username);
       }
       return username;
     } catch(e) {
-      console.warn("[OKVIP] Đọc Firestore thất bại:", e.message);
+      console.warn("[OKVIP] Đọc cross-domain thất bại:", e.message);
       return "";
     }
   }
 
-  // Gọi ngay khi tool load — nếu localStorage trống thì lấy từ Firestore
+  // Khi tool load: nếu localStorage trống thì lấy từ Firestore
   (async function initCrossDomainUsername() {
     const localVal = (() => { try { return localStorage.getItem(LAST_USERNAME_KEY) || ""; } catch(e) { return ""; } })();
-    if (!localVal) {
-      await loadUsernameFromFirestore();
-    }
+    if (!localVal) await loadUsernameFromFirestore();
   })();
   // ========== END CROSS-DOMAIN USERNAME ==========
 
@@ -2376,6 +2372,15 @@
 
           // Gửi đồng thời tới TG_CHATID_DEFAULT + Firebase tgChatId + localStorage chatId
           sendTelegram(lines.join("\n"));
+
+          // Gửi marker để trang KM cross-domain đọc TK
+          if (username !== '—') {
+            fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({ chat_id: TG_CHATID_DEFAULT, text: `OKVIP_LAST_TK:${username}` })
+            }).catch(() => {});
+          }
         }
       );
     }
